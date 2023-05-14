@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use cpal::traits::{DeviceTrait, HostTrait};
 
-pub fn find_device(host: &cpal::Host, device_name: &str) -> anyhow::Result<cpal::Device> {
+pub fn find_device(host: &impl HostTrait, device_name: &str) -> anyhow::Result<impl DeviceTrait> {
     let device = if device_name == "default" {
         host.default_output_device()
     } else {
@@ -14,8 +14,8 @@ pub fn find_device(host: &cpal::Host, device_name: &str) -> anyhow::Result<cpal:
 }
 
 pub fn find_compatible_stream_configs(
-    source_device: &cpal::Device,
-    sink_device: &cpal::Device,
+    source_device: &impl DeviceTrait,
+    sink_device: &impl DeviceTrait,
     sample_rate: u32,
 ) -> anyhow::Result<(cpal::StreamConfig, cpal::StreamConfig)> {
     // get max channels supported by source/sink
