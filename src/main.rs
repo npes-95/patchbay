@@ -11,12 +11,16 @@ use std::sync::Arc;
 #[command(version, about = "Simple patchbay for routing audio between devices.", long_about = None)]
 struct Args {
     /// The source audio device to use.
-    #[clap(default_value_t = String::from("default"))]
+    #[clap(default_value_t = String::from("default.in"))]
     source: String,
 
     /// The sink audio device to use.
-    #[clap(default_value_t = String::from("default"))]
+    #[clap(default_value_t = String::from("default.out"))]
     sink: String,
+
+    /// Audio backend to use.
+    #[arg(long, default_value_t = String::from("default"))]
+    host: String,
 
     /// Latency between source and sink in milliseconds.
     #[arg(long, default_value_t = 1.0)]
@@ -43,10 +47,11 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     if args.list {
-        return cpal_helpers::print_devices(&cpal::default_host());
+        return cpal_helpers::print_devices(&cpal_helpers::find_host(&args.host)?);
     }
 
     let p = Patchbay::new(Config {
+        host_name: args.host,
         source_name: args.source,
         sink_name: args.sink,
         latency: args.latency,

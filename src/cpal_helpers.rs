@@ -1,14 +1,37 @@
 use anyhow::anyhow;
 use cpal::traits::{DeviceTrait, HostTrait};
 
-pub fn find_device(host: &impl HostTrait, device_name: &str) -> anyhow::Result<impl DeviceTrait> {
-    let device = if device_name == "default" {
-        host.default_output_device()
+pub fn find_host(host_name: &str) -> anyhow::Result<cpal::Host> {
+    let host = if host_name == "default" {
+        cpal::default_host()
     } else {
-        host.output_devices()?
-            .find(|x| x.name().map(|name| name == device_name).unwrap_or(false))
-    }
-    .expect("failed to find device");
+        cpal::host_from_id(
+            cpal::available_hosts()
+                .into_iter()
+                .find(|host| host.name() == host_name)
+                .ok_or(anyhow!("unable to find host '{}'", host_name))?,
+        )?
+    };
+
+    Ok(host)
+}
+
+pub fn find_device(host: &impl HostTrait, device_name: &str) -> anyhow::Result<impl DeviceTrait> {
+    let device = match device_name {
+        "default.in" => host
+            .default_input_device()
+            .ok_or(anyhow!("unable to get default input device"))?,
+        "default.out" => host
+            .default_output_device()
+            .ok_or(anyhow!("unable to get default output device"))?,
+        _ => host
+            .output_devices()?
+            .find(|device| match device.name() {
+                Ok(name) => name == device_name,
+                _ => false,
+            })
+            .ok_or(anyhow!("unable to find device '{}'", device_name))?,
+    };
 
     Ok(device)
 }

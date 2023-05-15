@@ -8,10 +8,12 @@ simple patching for audio devices
 patchbay [OPTIONS] [SOURCE] [SINK]
 
 Arguments:
-  [SOURCE]  The source audio device to use [default: default]
-  [SINK]    The sink audio device to use [default: default]
+  [SOURCE]  The source audio device to use [default: default.in]
+  [SINK]    The sink audio device to use [default: default.out]
 
 Options:
+      --host <HOST>
+          Audio backend to use [default: default]
       --latency <LATENCY>
           Latency between source and sink in milliseconds [default: 1]
       --sample-rate <SAMPLE_RATE>

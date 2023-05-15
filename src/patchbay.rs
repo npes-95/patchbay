@@ -14,6 +14,7 @@ pub type Latency = f32;
 pub type SampleRate = u32;
 
 pub struct Config {
+    pub host_name: String,
     pub source_name: String,
     pub sink_name: String,
     pub latency: Latency,
@@ -28,7 +29,7 @@ pub struct Patchbay {
 
 impl Patchbay {
     pub fn new(config: Config) -> anyhow::Result<Self> {
-        let host = cpal::default_host();
+        let host = cpal_helpers::find_host(&config.host_name)?;
         let source = cpal_helpers::find_device(&host, &config.source_name)?;
         let sink = cpal_helpers::find_device(&host, &config.sink_name)?;
         let (source_stream_config, sink_stream_config) =
@@ -126,4 +127,3 @@ impl Patchbay {
         Ok(())
     }
 }
-
