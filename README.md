@@ -12,6 +12,8 @@ Arguments:
   [SINK]    The sink audio device to use [default: default.out]
 
 Options:
+  -c, --config <FILE>
+          Custom config file [default: ~/.config/patchbay/patchbay.toml]
       --host <HOST>
           Audio backend to use [default: default]
       --latency <LATENCY>
@@ -28,6 +30,21 @@ Options:
           Print help
   -V, --version
           Print version
+```
+
+## configuration
+
+patchbay looks for a configuration file in `~/.config/patchbay.toml`, unless it is specified using the `-c` flag.
+
+example:
+
+```
+host_name = "default"
+source_name = "default.in"
+sink_name = "default.out"
+latency = 2.0
+sample_rate = 44100
+channel_mapping = [[0,0]]
 ```
 
 ## install

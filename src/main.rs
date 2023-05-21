@@ -4,18 +4,30 @@ use patchbay::patchbay::{ChannelCount, Config, Latency, Patchbay, SampleRate};
 use clap::Parser;
 use ctrlc;
 
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Simple patchbay for routing audio between devices.", long_about = None)]
 struct Args {
+    /// Custom config file.
+    #[arg(
+        short,
+        long,
+        value_name = "FILE",
+        default_value_t = String::from("~/.config/patchbay/patchbay.toml")
+    )]
+    config: String,
+
     /// The source audio device to use.
-    #[clap(default_value_t = String::from("default.in"))]
+    #[arg(default_value_t = String::from("default.in"))]
     source: String,
 
     /// The sink audio device to use.
-    #[clap(default_value_t = String::from("default.out"))]
+    #[arg(default_value_t = String::from("default.out"))]
     sink: String,
 
     /// Audio backend to use.
@@ -50,18 +62,30 @@ fn main() -> anyhow::Result<()> {
         return cpal_helpers::print_devices(&cpal_helpers::find_host(&args.host)?);
     }
 
-    let p = Patchbay::new(Config {
-        host_name: args.host,
-        source_name: args.source,
-        sink_name: args.sink,
-        latency: args.latency,
-        sample_rate: args.sample_rate,
-        channel_mapping: args
-            .source_channels
-            .into_iter()
-            .zip(args.sink_channels.into_iter())
-            .collect(),
-    })?;
+    let cli_config_path = Path::new(&args.config);
+
+    let config = if cli_config_path.exists() {
+        let mut f = File::open(cli_config_path)?;
+        let mut s = String::new();
+        f.read_to_string(&mut s)?;
+        let t = s.parse::<toml::Table>()?;
+        t.try_into()?
+    } else {
+        Config {
+            host_name: args.host,
+            source_name: args.source,
+            sink_name: args.sink,
+            latency: args.latency,
+            sample_rate: args.sample_rate,
+            channel_mapping: args
+                .source_channels
+                .into_iter()
+                .zip(args.sink_channels.into_iter())
+                .collect(),
+        }
+    };
+
+    let p = Patchbay::new(config)?;
 
     println!("Starting audio loop...");
 
@@ -80,6 +104,7 @@ fn main() -> anyhow::Result<()> {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
 
+    println!();
     println!("Cleaning up.");
 
     Ok(())

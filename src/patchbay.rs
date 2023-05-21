@@ -3,6 +3,7 @@ use crate::cpal_helpers;
 use anyhow::anyhow;
 use cpal::traits::DeviceTrait;
 use ringbuf::HeapRb;
+use serde::Deserialize;
 
 /// Audio channel index.
 pub type ChannelCount = u16;
@@ -13,6 +14,7 @@ pub type Latency = f32;
 /// Sample rate in Hz.
 pub type SampleRate = u32;
 
+#[derive(Deserialize)]
 pub struct Config {
     pub host_name: String,
     pub source_name: String,
