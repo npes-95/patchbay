@@ -34,7 +34,7 @@ Options:
 
 ## configuration
 
-patchbay looks for a configuration file in `~/.config/patchbay.toml`, unless it is specified using the `-c` flag.
+patchbay looks for a configuration file in `~/.config/patchbay/patchbay.toml`, unless it is specified using the `-c` flag.
 
 example:
 
