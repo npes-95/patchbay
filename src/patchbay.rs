@@ -5,6 +5,9 @@ use cpal::traits::DeviceTrait;
 use ringbuf::HeapRb;
 use serde::Deserialize;
 
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+
 /// Audio channel index.
 pub type ChannelCount = u16;
 
@@ -27,6 +30,8 @@ pub struct Config {
 pub struct Patchbay {
     source_stream: Box<dyn cpal::traits::StreamTrait>,
     sink_stream: Box<dyn cpal::traits::StreamTrait>,
+    overruns: Arc<AtomicU32>,
+    underruns: Arc<AtomicU32>,
 }
 
 impl Patchbay {
@@ -69,28 +74,34 @@ impl Patchbay {
         let (source_channels, sink_channels): (Vec<_>, Vec<_>) =
             config.channel_mapping.into_iter().unzip();
 
+        let overruns = Arc::new(AtomicU32::new(0));
+        let overruns_clone = overruns.clone();
+
         let source_cb = move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            let mut overrun = false;
+            let mut has_overrun = false;
             for source_frame in data.chunks(source_stream_config.channels as usize) {
                 for channel in source_channels.iter() {
                     if producer.push(source_frame[*channel as usize]).is_err() {
-                        overrun = true;
+                        has_overrun = true;
                     }
                 }
             }
-            if overrun {
-                eprintln!("overrun: try increasing latency",);
+            if has_overrun {
+                overruns.fetch_add(1, Ordering::Relaxed);
             }
         };
 
+        let underruns = Arc::new(AtomicU32::new(0));
+        let underruns_clone = underruns.clone();
+
         let sink_cb = move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-            let mut underrun = false;
+            let mut has_underrun = false;
             for sink_frame in data.chunks_mut(sink_stream_config.channels as usize) {
                 for channel in sink_channels.iter() {
                     let source_channel_sample = match consumer.pop() {
                         Some(s) => s,
                         None => {
-                            underrun = true;
+                            has_underrun = true;
                             0_f32
                         }
                     };
@@ -98,8 +109,8 @@ impl Patchbay {
                     sink_frame[*channel as usize] = source_channel_sample;
                 }
             }
-            if underrun {
-                eprintln!("underrun: try increasing latency");
+            if has_underrun {
+                underruns.fetch_add(1, Ordering::Relaxed);
             }
         };
 
@@ -120,6 +131,8 @@ impl Patchbay {
                 err_cb,
                 None,
             )?),
+            overruns: overruns_clone,
+            underruns: underruns_clone,
         })
     }
 
@@ -127,5 +140,13 @@ impl Patchbay {
         self.source_stream.play()?;
         self.sink_stream.play()?;
         Ok(())
+    }
+
+    pub fn get_overruns(&self) -> u32 {
+        self.overruns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_underruns(&self) -> u32 {
+        self.underruns.load(Ordering::Relaxed)
     }
 }

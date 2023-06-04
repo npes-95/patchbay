@@ -9,6 +9,7 @@ use std::io::Read;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Simple patchbay for routing audio between devices.", long_about = None)]
@@ -94,18 +95,25 @@ fn main() -> anyhow::Result<()> {
 
     ctrlc::set_handler(move || {
         should_play_clone.store(false, Ordering::SeqCst);
+        println!();
+        println!("Finishing...");
     })?;
+
+    let now = Instant::now();
 
     p.start()?;
 
     println!("Started.");
 
-    while should_play.load(Ordering::SeqCst) {
-        std::thread::sleep(std::time::Duration::from_millis(50));
+    while should_play.load(Ordering::Relaxed) {
+        print!(
+            "Elapsed: {}s -- Overruns: {} -- Underruns: {}\r",
+            now.elapsed().as_secs(),
+            p.get_overruns(),
+            p.get_underruns()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
     }
-
-    println!();
-    println!("Cleaning up.");
 
     Ok(())
 }
