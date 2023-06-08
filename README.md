@@ -34,9 +34,9 @@ Options:
 
 ## configuration
 
-patchbay looks for a configuration file in `~/.config/patchbay/patchbay.toml`, unless it is specified using the `-c` flag.
+patchbay looks for a configuration file in `~/.config/patchbay/patchbay.toml`, unless it is specified using the `-c` flag. if neither exist, it falls back to the command line arguments.
 
-example:
+**example:**
 
 ```
 host_name = "default"
