@@ -1,6 +1,6 @@
 # patchbay
 
-simple patching for audio devices
+simple patching for audio devices (note: only tested on macOS)
 
 ## usage
 
