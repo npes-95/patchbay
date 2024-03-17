@@ -1,119 +1,208 @@
-use patchbay::cpal_helpers;
-use patchbay::patchbay::{ChannelCount, Config, Latency, Patchbay, SampleRate};
+use patchbay::cli;
+use patchbay::connection::Connection;
+use patchbay::patchbay::Patchbay;
+use patchbay::system;
+use patchbay::Action;
 
-use clap::Parser;
-use ctrlc;
+use anyhow::Result;
+use cpal::traits::{DeviceTrait, HostTrait};
+use uuid::Uuid;
 
-use std::fs::File;
-use std::io::Read;
+use std::env;
+use std::io::{Read, Write};
 use std::path::Path;
+use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::thread;
+use std::time;
 
-#[derive(Parser, Debug)]
-#[command(version, about = "Simple patchbay for routing audio between devices.", long_about = None)]
-struct Args {
-    /// Custom config file.
-    #[arg(
-        short,
-        long,
-        value_name = "FILE",
-        default_value_t = String::from("~/.config/patchbay/patchbay.toml")
-    )]
-    config: String,
-
-    /// The source audio device to use.
-    #[arg(default_value_t = String::from("default.in"))]
-    source: String,
-
-    /// The sink audio device to use.
-    #[arg(default_value_t = String::from("default.out"))]
-    sink: String,
-
-    /// Audio backend to use.
-    #[arg(long, default_value_t = String::from("default"))]
-    host: String,
-
-    /// Latency between source and sink in milliseconds.
-    #[arg(long, default_value_t = 1.0)]
-    latency: Latency,
-
-    /// Desired sample rate.
-    #[arg(long, default_value_t = 48000)]
-    sample_rate: SampleRate,
-
-    /// List available devices and supported configurations.
-    #[arg(short, long)]
-    list: bool,
-
-    /// Source channels to map (base index 0).
-    #[arg(long, num_args = 1.., default_values_t = [0])]
-    source_channels: Vec<ChannelCount>,
-
-    /// Sink channels to map (base index 0).
-    #[arg(long, num_args = 1.., default_values_t = [0])]
-    sink_channels: Vec<ChannelCount>,
+fn list() -> Result<()> {
+    for host in system::hosts() {
+        if let Ok(host) = host {
+            let host_name = host.id().name();
+            println!("Devices ({}):", host_name);
+            for device in host.devices()? {
+                let input_channels = if device.default_input_config().is_ok() {
+                    device.default_input_config()?.channels()
+                } else {
+                    0
+                };
+                let output_channels = if device.default_output_config().is_ok() {
+                    device.default_output_config()?.channels()
+                } else {
+                    0
+                };
+                println!(
+                    "{} (in: {}, out: {})",
+                    device.name()?,
+                    input_channels,
+                    output_channels
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+fn set_host(host_name: &str, patchbay: &mut Patchbay) -> Result<()> {
+    patchbay.halt()?;
+    patchbay.remove_all_connections()?;
+    println!("Set host {}", host_name);
+    patchbay.set_host(host_name)
+}
 
-    if args.list {
-        return cpal_helpers::print_devices(&cpal_helpers::find_host(&args.host)?);
-    }
-
-    let cli_config_path = Path::new(&args.config);
-
-    let config = if cli_config_path.exists() {
-        let mut f = File::open(cli_config_path)?;
-        let mut s = String::new();
-        f.read_to_string(&mut s)?;
-        let t = s.parse::<toml::Table>()?;
-        t.try_into()?
-    } else {
-        Config {
-            host_name: args.host,
-            source_name: args.source,
-            sink_name: args.sink,
-            latency: args.latency,
-            sample_rate: args.sample_rate,
-            channel_mapping: args
-                .source_channels
-                .into_iter()
-                .zip(args.sink_channels.into_iter())
-                .collect(),
-        }
-    };
-
-    let p = Patchbay::new(config)?;
-
-    println!("Starting audio loop...");
-
-    let should_play = Arc::new(AtomicBool::new(true));
-    let should_play_clone = should_play.clone();
-
-    ctrlc::set_handler(move || {
-        should_play_clone.store(false, Ordering::SeqCst);
-        println!();
-        println!("Finishing...");
-    })?;
-
-    let now = Instant::now();
-
-    p.start()?;
-
-    println!("Started.");
-
-    while should_play.load(Ordering::Relaxed) {
-        print!(
-            "Elapsed: {}s -- Overruns: {} -- Underruns: {}\r",
-            now.elapsed().as_secs(),
-            p.get_overruns(),
-            p.get_underruns()
-        );
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    }
-
+fn connect(
+    source_name: String,
+    source_channel: u16,
+    sink_name: String,
+    sink_channel: u16,
+    patchbay: &mut Patchbay,
+) -> Result<()> {
+    let connection = Connection::new(
+        patchbay.host().to_owned(),
+        source_name,
+        sink_name,
+        source_channel,
+        sink_channel,
+    )?;
+    let id = patchbay.add_connection(connection)?;
+    println!("Created connection with id {}", id);
     Ok(())
+}
+
+fn disconnect(id: &str, patchbay: &mut Patchbay) -> Result<()> {
+    if id == "*" {
+        patchbay.remove_all_connections()?;
+    } else {
+        patchbay.remove_connection(&Uuid::parse_str(id)?)?;
+    }
+
+    println!("Removed connection {}", id);
+    Ok(())
+}
+
+fn save(path: &Path, patchbay: &mut Patchbay) -> Result<()> {
+    let mut f = std::fs::File::create(path)?;
+    f.write_all(serde_json::to_string_pretty(&patchbay)?.as_bytes())?;
+    println!("Saved configuration to {:?}", path);
+    Ok(())
+}
+
+fn load(path: &Path, patchbay: &mut Patchbay) -> Result<()> {
+    let mut f = std::fs::File::open(path)?;
+    let mut buf = String::new();
+    f.read_to_string(&mut buf)?;
+
+    let new = serde_json::from_str(&buf)?;
+
+    patchbay.halt()?;
+    patchbay.remove_all_connections()?;
+    *patchbay = new;
+    patchbay.halt()?;
+    println!("Loaded configuration");
+    Ok(())
+}
+
+fn run_daemon(mut patchbay: Patchbay) -> Result<()> {
+    let terminate = Arc::new(AtomicBool::new(false));
+    signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&terminate))?;
+    let hundred_millis = time::Duration::from_millis(100);
+
+    patchbay.run()?;
+
+    println!(
+        "Started patchbay in non-interactive mode (PID: {})",
+        process::id()
+    );
+
+
+    while !terminate.load(Ordering::Relaxed) {
+        thread::sleep(hundred_millis);
+    }
+
+    patchbay.halt()?;
+    Ok(())
+}
+
+fn run_repl(mut patchbay: Patchbay) -> Result<()> {
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let mut parser = cli::Parser::new();
+
+    loop {
+        match cli::prompt("> ", &stdin, &mut stdout) {
+            Ok(input) => {
+                if input.is_empty() {
+                    continue;
+                }
+
+                match parser.parse(cli::split_args(&input)) {
+                    Ok(action) => {
+                        let result = match action {
+                            Action::List => list(),
+                            Action::Host(host_name) => set_host(&host_name, &mut patchbay),
+                            Action::Connect(
+                                source_name,
+                                source_channel,
+                                sink_name,
+                                sink_channel,
+                            ) => connect(
+                                source_name,
+                                source_channel,
+                                sink_name,
+                                sink_channel,
+                                &mut patchbay,
+                            ),
+                            Action::Disconnect(id) => disconnect(&id, &mut patchbay),
+                            Action::Print => {
+                                print!("{}", patchbay);
+                                Ok(())
+                            }
+                            Action::Start => patchbay.run(),
+                            Action::Stop => patchbay.halt(),
+                            Action::Save(path) => save(&Path::new(&path), &mut patchbay),
+                            Action::Load(path) => load(&Path::new(&path), &mut patchbay),
+                            Action::Quit => break,
+                        };
+
+                        match result {
+                            Ok(_) => continue,
+                            Err(e) => eprintln!("{}", e),
+                        };
+                    }
+                    Err(e) => eprintln!("{}", e),
+                };
+            }
+            Err(e) => eprintln!("{}", e),
+        };
+    }
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let mut patchbay = Patchbay::new(system::default_host().id().name());
+
+    let args: Vec<String> = env::args().collect();
+    let mut daemonize = false;
+
+    for arg in args.iter().skip(1).take(2) {
+        if arg == "-d" {
+            daemonize = true;
+        } else {
+            match load(&Path::new(&arg), &mut patchbay) {
+                Ok(_) => (),
+                Err(e) => {
+                    eprintln!("Could not load configuration: {}", e);
+                    eprintln!("Continuing with default");
+                }
+            }
+        }
+    }
+
+    if daemonize {
+        run_daemon(patchbay)
+    } else {
+        run_repl(patchbay)
+    }
 }

@@ -1,50 +1,59 @@
 # patchbay
 
-simple one-to-one patching for audio devices (note: only tested on macOS)
+simple routing between audio devices
 
 ## usage
 
+patchbay can be run interactively or as a daemon.
+
+### command line arguments
+
 ```
-patchbay [OPTIONS] [SOURCE] [SINK]
+patchbay [OPTIONS] [CONFIG PATH]
 
 Arguments:
-  [SOURCE]  The source audio device to use [default: default.in]
-  [SINK]    The sink audio device to use [default: default.out]
+  [CONFIG PATH] Path to the configuration file (optional)
 
 Options:
-  -c, --config <FILE>
-          Custom config file [default: ~/.config/patchbay/patchbay.toml]
-      --host <HOST>
-          Audio backend to use [default: default]
-      --latency <LATENCY>
-          Latency between source and sink in milliseconds [default: 1]
-      --sample-rate <SAMPLE_RATE>
-          Desired sample rate [default: 48000]
-  -l, --list
-          List available devices and supported configurations
-      --source-channels <SOURCE_CHANNELS>...
-          Source channels to map (base index 0) [default: 0]
-      --sink-channels <SINK_CHANNELS>...
-          Sink channels to map (base index 0) [default: 0]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
+  -d
+      Run in daemon mode
+```
+
+### interactive commands
+
+```
+list        List hosts and devices available on system.
+host        Select host.
+connect     Create connection between two channels on a source device and a sink device.
+disconnect  Delete connection.
+print       Print patchbay state.
+start       Start audio loop.
+stop        Stop audio loop.
+save        Save patchbay state to JSON configuration file.
+load        Load patchbay state from JSON configuration file.
+quit        Quit patchbay.
+help        Print this message or the help of the given subcommand(s)
 ```
 
 ## configuration
 
-patchbay looks for a configuration file in `~/.config/patchbay/patchbay.toml`, unless it is specified using the `-c` flag. if neither exist, it falls back to the command line arguments.
-
-**example:**
+it is recommended to configure patchbay in interactive mode and export the configuration as JSON
 
 ```
-host_name = "default"
-source_name = "default.in"
-sink_name = "default.out"
-latency = 2.0
-sample_rate = 44100
-channel_mapping = [[0,0]]
+# sample-config.json
+{
+  "host": "<host-name>",                    # string
+  "connections": {
+    "<connection-id>": {                    # uuid
+      "host_name": "<host-name>",           # string
+      "source_name": "<source-name>",       # string
+      "sink_name": "<sink-name>",           # string
+      "source_channel": <source-channel>,   # u16
+      "sink_channel": <sink-channel>        # u16
+    },
+    ...
+  }
+}
 ```
 
 ## install
@@ -54,3 +63,9 @@ git clone https://github.com/npes-95/patchbay.git
 cd patchbay
 cargo install --path .
 ```
+
+## open issues
+
+* dynamic sample rate selection unsupported (limited to 48kHz)
+* command history unsupported
+* untested on Linux and Windows
