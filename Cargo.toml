@@ -13,4 +13,5 @@ ringbuf = "0.3.*"
 serde = { version = "1.0.*", features = ["derive"] }
 serde_json = "1.0.113"
 signal-hook = "0.3.17"
+sysinfo = "0.30.7"
 uuid = { version = "1.7.0", features = ["v4", "serde"] }

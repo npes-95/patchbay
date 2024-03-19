@@ -4,7 +4,8 @@ use patchbay::patchbay::Patchbay;
 use patchbay::system;
 use patchbay::Action;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use sysinfo::System;
 use cpal::traits::{DeviceTrait, HostTrait};
 use uuid::Uuid;
 
@@ -181,6 +182,13 @@ fn run_repl(mut patchbay: Patchbay) -> Result<()> {
 }
 
 fn main() -> Result<()> {
+    let s = System::new_all();
+    for instance in s.processes_by_exact_name("patchbay") {
+        if instance.pid().as_u32() != process::id() {
+            return Err(anyhow!("Process already started with PID {}", instance.pid()));
+        }
+    }
+
     let mut patchbay = Patchbay::new(system::default_host().id().name());
 
     let args: Vec<String> = env::args().collect();
