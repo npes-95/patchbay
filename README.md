@@ -35,6 +35,17 @@ quit        Quit patchbay.
 help        Print this message or the help of the given subcommand(s)
 ```
 
+Input strings with spaces should be enclosed in double or single quotes:
+```
+> host "host foo"
+...
+> connect "device foo" 1 "device bar" 2
+...
+> save "path/with spaces/config.json"
+...
+> load "path/with spaces/config.json"
+```
+
 ## configuration
 
 it is recommended to configure patchbay in interactive mode and export the configuration as JSON
