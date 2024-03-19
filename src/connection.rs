@@ -2,7 +2,7 @@ use crate::system;
 
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, StreamTrait};
-use ringbuf::HeapRb;
+use ringbuf::{HeapRb, Rb};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -47,7 +47,12 @@ impl Connection {
 
         let max_channels = std::cmp::max(source_config.channels, sink_config.channels);
         let ringbuf = Self::create_ringbuf(SAMPLE_RATE, &LATENCY, max_channels);
+        let capacity = ringbuf.capacity();
         let (mut producer, mut consumer) = ringbuf.split();
+
+        for _ in 0..capacity {
+            producer.push(0.0).unwrap();
+        }
 
         let source_cb = move |samples: &[f32], _: &cpal::InputCallbackInfo| {
             producer.push_iter(
